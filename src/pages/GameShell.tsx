@@ -30,13 +30,12 @@ export function GameShell() {
 
   if (gameState === "REVEAL") {
     return (
-      <div className="min-h-screen bg-zinc-950 p-8">
-        <RevealGallery
-          pages={pages}
-          userNames={userNames}
-          onBackToLobby={backToLobby}
-        />
-      </div>
+      <RevealGallery
+        pages={pages}
+        userNames={userNames}
+        onPlayAgain={startGame}
+        onBackToLobby={backToLobby}
+      />
     );
   }
 

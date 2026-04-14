@@ -2,10 +2,28 @@ import { useEffect, useMemo, useRef } from "react";
 import { LiveObject } from "@liveblocks/client";
 import { useMutation, useOthers, useStorage } from "../liveblocks/room";
 import { rotatePageOwners } from "../utils/rotation";
-import type { GameState, PageData } from "../types/game";
+import type { GameState, PageData, Snapshot } from "../types/game";
 
 const ROUND_SECONDS = 60;
 const TRANSITION_MS = 700;
+
+function captureSnapshots(
+  pages: ReturnType<ReturnType<typeof useStorage<any>>["get"]>,
+) {
+  for (let i = 0; i < (pages as any).length; i++) {
+    const page = (pages as any).get(i);
+    if (!page) continue;
+
+    const existing: Snapshot[] = JSON.parse(
+      page.get("snapshotsJSON") || "[]",
+    );
+    existing.push({
+      contributorId: page.get("currentOwnerId"),
+      canvasJSON: page.get("canvasJSON"),
+    });
+    page.set("snapshotsJSON", JSON.stringify(existing));
+  }
+}
 
 export function useGameLogic(selfUserId: string, selfUserName: string) {
   const others = useOthers();
@@ -42,6 +60,7 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
   const rotate = useMutation(
     ({ storage }) => {
       const livePages = storage.get("pages");
+      captureSnapshots(livePages);
       rotatePageOwners(livePages, allUserIds);
       storage.set("round", storage.get("round") + 1);
       storage.set("timer", ROUND_SECONDS);
@@ -51,6 +70,8 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
   );
 
   const setReveal = useMutation(({ storage }) => {
+    const livePages = storage.get("pages");
+    captureSnapshots(livePages);
     storage.set("gameState", "REVEAL");
   }, []);
 
@@ -65,6 +86,7 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
             originalOwnerId: uid,
             currentOwnerId: uid,
             canvasJSON: "",
+            snapshotsJSON: "[]",
           }),
         );
       });
@@ -75,7 +97,6 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
     [allUserIds],
   );
 
-  // Host-driven timer tick
   useEffect(() => {
     if (!isHost || gameState !== "DRAWING") return;
     if (tickingRef.current) return;
@@ -88,13 +109,11 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
     };
   }, [isHost, gameState, tick]);
 
-  // Trigger transition when timer hits zero
   useEffect(() => {
     if (!isHost) return;
     if (gameState === "DRAWING" && timer === 0) beginTransition();
   }, [isHost, gameState, timer, beginTransition]);
 
-  // After transition animation, rotate or reveal
   useEffect(() => {
     if (!isHost || gameState !== "TRANSITION") return;
 

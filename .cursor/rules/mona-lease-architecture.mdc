@@ -1,0 +1,32 @@
+---
+description: Carousel Canvas (MonaLease) — stack, Liveblocks, Fabric v7, game flow, canvas/reveal sync
+alwaysApply: true
+---
+
+# MonaLease / Carousel Canvas
+
+Real-time collaborative drawing game. **React**, **Vite**, **TypeScript**, **Liveblocks** (sync), **fabric.js v7** (canvas), **Zustand** (local UI), **Tailwind CSS**, **Framer Motion**.
+
+## Where things live
+
+- **Liveblocks room**: `createRoomContext` in `src/liveblocks/room.tsx` — use `useStorage`, `useMutation`, presence hooks from there.
+- **Game state machine**: `src/hooks/useGameLogic.ts` — `LOBBY` → `DRAWING` → `TRANSITION` → `REVEAL`; host drives timer, transitions, rotation, and final reveal.
+- **Pages**: `Storage.pages` is a `LiveList` of `LiveObject<PageData>` (`originalOwnerId`, `currentOwnerId`, `canvasJSON`, `snapshotsJSON`). Rotation in `src/utils/rotation.ts`.
+- **Drawing UI**: `src/components/game/CanvasBoard.tsx` — Fabric canvas; **create the `<canvas>` in JS** (append to a ref), not JSX, so instances survive **React StrictMode** double mount.
+- **Reveal**: `src/components/gallery/RevealGallery.tsx` — timelapse diffs `objects` between serialized snapshots; finished grid uses **pre-captured PNG data URLs** (no Fabric), avoiding StrictMode issues.
+
+## Canvas ↔ Liveblocks
+
+- `CanvasBoard` serializes with `JSON.stringify(canvas.toJSON())` and writes via `useMutation` to the matching page’s `canvasJSON`.
+- Sync on Fabric events such as **`path:created`**, **`object:added`**, **`object:modified`** (debounced briefly where implemented).
+- **Round snapshots**: appended to `snapshotsJSON` (JSON array of `{ contributorId, canvasJSON }`) when the host rotates or enters reveal — see `captureSnapshots` in `useGameLogic.ts`.
+
+## Reveal / multiplayer gotchas
+
+- Reveal must use **up-to-date** `pages` from storage (including full `snapshotsJSON`). Do not cache parsed snapshots only on first render; wait until each page has the expected snapshot count before starting timelapse so clients do not show shifted or empty panels.
+
+## Types
+
+- `src/types/game.ts` — `GameState`, `PageData`, `Snapshot`, `Storage`, `Presence`.
+
+When changing game flow or storage shape, update **both** Liveblocks initial storage (if any) and consumers (`useGameLogic`, `CanvasBoard`, `RevealGallery`, `GameShell`).

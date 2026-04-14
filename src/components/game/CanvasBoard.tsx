@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Canvas, PencilBrush } from "fabric";
-import { useFabricSync } from "../../hooks/useFabricSync";
-import { useUpdateMyPresence } from "../../liveblocks/room";
+import { useMutation, useUpdateMyPresence } from "../../liveblocks/room";
 import { useUiStore } from "../../store/uiStore";
 import type { PageData } from "../../types/game";
 
@@ -20,20 +19,34 @@ export function CanvasBoard({
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
-  const { scheduleSync } = useFabricSync(page.id);
   const updatePresence = useUpdateMyPresence();
   const brushColor = useUiStore((s) => s.brushColor);
   const brushWidth = useUiStore((s) => s.brushWidth);
 
-  const syncRef = useRef(scheduleSync);
-  syncRef.current = scheduleSync;
   const canDrawRef = useRef(canDraw);
   canDrawRef.current = canDraw;
   const presenceRef = useRef(updatePresence);
   presenceRef.current = updatePresence;
-
   const drawingPointsRef = useRef<Array<{ x: number; y: number }>>([]);
   const lastPointsSyncRef = useRef(0);
+  const syncPendingRef = useRef(false);
+
+  const writeCanvasJSON = useMutation(
+    ({ storage }, json: string) => {
+      const pages = storage.get("pages");
+      for (let i = 0; i < pages.length; i++) {
+        const p = pages.get(i);
+        if (p?.get("id") === page.id) {
+          p.set("canvasJSON", json);
+          break;
+        }
+      }
+    },
+    [page.id],
+  );
+
+  const writeRef = useRef(writeCanvasJSON);
+  writeRef.current = writeCanvasJSON;
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -61,12 +74,28 @@ export function CanvasBoard({
         .catch(() => {});
     }
 
+    const syncNow = () => {
+      if (syncPendingRef.current) return;
+      syncPendingRef.current = true;
+      setTimeout(() => {
+        try {
+          const json = JSON.stringify(canvas.toJSON());
+          writeRef.current(json);
+        } catch {
+          /* canvas may have been disposed */
+        }
+        syncPendingRef.current = false;
+      }, 50);
+    };
+
     canvas.on("path:created", () => {
       drawingPointsRef.current = [];
       presenceRef.current({ drawingPoints: null, isDrawing: false });
-      syncRef.current(canvas);
+      syncNow();
     });
-    canvas.on("object:modified", () => syncRef.current(canvas));
+
+    canvas.on("object:added", syncNow);
+    canvas.on("object:modified", syncNow);
 
     canvas.on("mouse:move", (e) => {
       const pointer = canvas.getScenePoint(e.e);
