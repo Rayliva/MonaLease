@@ -1,0 +1,91 @@
+import { useState } from "react";
+import { useParams } from "react-router-dom";
+import { useOthers, useSelf } from "../../liveblocks/room";
+
+interface Props {
+  isHost: boolean;
+  onStart: () => void;
+}
+
+export function LobbyView({ isHost, onStart }: Props) {
+  const { roomId } = useParams<{ roomId: string }>();
+  const self = useSelf();
+  const others = useOthers();
+  const playerCount = 1 + others.length;
+  const [copied, setCopied] = useState(false);
+
+  const roomCode = roomId ?? "";
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-zinc-950 px-4">
+      <h1 className="bg-gradient-to-r from-emerald-400 to-indigo-400 bg-clip-text text-5xl font-extrabold text-transparent">
+        Carousel Canvas
+      </h1>
+
+      <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-6">
+        <div className="mb-5 rounded-lg bg-zinc-800 px-4 py-3 text-center">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Room Code
+          </p>
+          <p className="font-mono text-2xl font-bold tracking-widest text-emerald-400">
+            {roomCode}
+          </p>
+          <button
+            onClick={handleCopy}
+            className="mt-2 text-xs text-indigo-400 transition hover:text-indigo-300"
+          >
+            {copied ? "Copied link!" : "Copy invite link"}
+          </button>
+        </div>
+
+        <h2 className="mb-4 text-lg font-semibold text-zinc-200">
+          Players ({playerCount})
+        </h2>
+
+        <ul className="mb-6 space-y-2">
+          {self && (
+            <li className="flex items-center gap-2 text-sm text-zinc-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              {self.presence.userName || "You"}
+              <span className="ml-auto text-xs text-emerald-400">you</span>
+            </li>
+          )}
+          {others.map((user) => (
+            <li
+              key={user.connectionId}
+              className="flex items-center gap-2 text-sm text-zinc-300"
+            >
+              <span className="h-2 w-2 rounded-full bg-blue-500" />
+              {user.presence.userName || "Anonymous"}
+            </li>
+          ))}
+        </ul>
+
+        {isHost ? (
+          <button
+            onClick={onStart}
+            disabled={playerCount < 2}
+            className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {playerCount < 2 ? "Waiting for players..." : "Start Game"}
+          </button>
+        ) : (
+          <p className="text-center text-sm text-zinc-500">
+            Waiting for the host to start the game...
+          </p>
+        )}
+      </div>
+
+      <p className="max-w-md text-center text-sm text-zinc-500">
+        Share the room code above or this page URL with friends. Each player
+        draws on a canvas, then pages rotate until everyone has contributed.
+      </p>
+    </div>
+  );
+}
