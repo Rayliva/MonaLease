@@ -4,7 +4,7 @@ import { RoomProvider } from "../liveblocks/room";
 import { useUiStore } from "../store/uiStore";
 import { GameShell } from "./GameShell";
 
-const ROUND_SECONDS = 60;
+const DEFAULT_ROUND_SECONDS = 30;
 
 export function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -32,7 +32,8 @@ export function RoomPage() {
       }}
       initialStorage={{
         gameState: "LOBBY",
-        timer: ROUND_SECONDS,
+        timer: DEFAULT_ROUND_SECONDS,
+        roundDurationSec: DEFAULT_ROUND_SECONDS,
         round: 0,
         pages: new LiveList([]),
       }}

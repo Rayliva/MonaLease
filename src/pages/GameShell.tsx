@@ -6,8 +6,6 @@ import { TimerBar } from "../components/game/TimerBar";
 import { RoundBadge } from "../components/game/RoundBadge";
 import { RevealGallery } from "../components/gallery/RevealGallery";
 
-const ROUND_SECONDS = 60;
-
 export function GameShell() {
   const userId = useUiStore((s) => s.userId);
   const userName = useUiStore((s) => s.userName);
@@ -15,17 +13,28 @@ export function GameShell() {
     loading,
     gameState,
     timer,
+    roundDurationSec,
     round,
     pages,
     isHost,
+    hostId,
     allUserIds,
     userNames,
     startGame,
+    setRoundDuration,
     backToLobby,
   } = useGameLogic(userId, userName);
 
   if (loading || gameState === "LOBBY") {
-    return <LobbyView isHost={isHost} onStart={startGame} />;
+    return (
+      <LobbyView
+        isHost={isHost}
+        hostId={hostId}
+        roundDurationSec={roundDurationSec}
+        onRoundDurationChange={setRoundDuration}
+        onStart={startGame}
+      />
+    );
   }
 
   if (gameState === "REVEAL") {
@@ -44,7 +53,7 @@ export function GameShell() {
       <header className="flex items-center justify-between">
         <RoundBadge round={round} totalRounds={allUserIds.length} />
         <div className="w-64">
-          <TimerBar seconds={timer} maxSeconds={ROUND_SECONDS} />
+          <TimerBar seconds={timer} maxSeconds={roundDurationSec} />
         </div>
       </header>
 

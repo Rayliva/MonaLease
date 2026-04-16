@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef } from "react";
 import { CanvasBoard } from "./CanvasBoard";
 import { GhostCursors } from "./GhostCursors";
 import { TransitionLayer } from "./TransitionLayer";
@@ -21,6 +22,22 @@ export function CanvasViewport({
   userNames,
 }: Props) {
   const isTransitioning = gameState === "TRANSITION";
+  const pageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const activePageId = useMemo(
+    () => pages.find((page) => page.currentOwnerId === selfUserId)?.id ?? null,
+    [pages, selfUserId],
+  );
+
+  useEffect(() => {
+    if (!activePageId) return;
+    const activePageEl = pageRefs.current[activePageId];
+    activePageEl?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+      inline: "nearest",
+    });
+  }, [activePageId]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -35,6 +52,9 @@ export function CanvasViewport({
         return (
           <div
             key={page.id}
+            ref={(el) => {
+              pageRefs.current[page.id] = el;
+            }}
             className={`relative rounded-2xl p-2 transition-shadow ${
               isMyActive
                 ? "ring-2 ring-emerald-500 shadow-lg shadow-emerald-500/20"

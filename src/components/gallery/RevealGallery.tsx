@@ -53,7 +53,7 @@ export function RevealGallery({
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
-  const cancelRef = useRef(false);
+  const generationRef = useRef(0);
 
   const [phase, setPhase] = useState<Phase>("timelapse");
   const [pageIdx, setPageIdx] = useState(0);
@@ -69,13 +69,17 @@ export function RevealGallery({
   );
   const revealDataReady = useMemo(() => {
     if (pages.length === 0) return false;
-    // In a complete round-robin game each page should have one snapshot per player.
     return allSnapshots.every((snaps) => snaps.length >= pages.length);
   }, [allSnapshots, pages.length]);
 
   const currentPageSnapshots = allSnapshots[pageIdx] ?? [];
   const currentPage = pages[pageIdx];
-  const collectedImages = useRef<string[]>([]);
+
+  // Keep latest snapshots accessible to the effect without re-triggering it.
+  const allSnapshotsRef = useRef(allSnapshots);
+  allSnapshotsRef.current = allSnapshots;
+  const pagesRef = useRef(pages);
+  pagesRef.current = pages;
 
   const initCanvas = useCallback(() => {
     const wrapper = wrapperRef.current;
@@ -100,83 +104,9 @@ export function RevealGallery({
     return canvas;
   }, []);
 
-  const sleep = (ms: number) =>
-    new Promise<void>((resolve) => {
-      const id = setTimeout(resolve, ms);
-      const check = setInterval(() => {
-        if (cancelRef.current) {
-          clearTimeout(id);
-          clearInterval(check);
-          resolve();
-        }
-      }, 100);
-    });
-
-  const replayPage = useCallback(
-    async (pgIdx: number) => {
-      const canvas = initCanvas();
-      if (!canvas) {
-        collectedImages.current.push("");
-        return;
-      }
-
-      const snapshots = allSnapshots[pgIdx] ?? [];
-      let prevObjectCount = 0;
-
-      for (let sIdx = 0; sIdx < snapshots.length; sIdx++) {
-        if (cancelRef.current) break;
-
-        const snap = snapshots[sIdx];
-        setSnapshotIdx(sIdx);
-        setActiveContributor(snap.contributorId);
-
-        const allObjects = getObjectsFromJSON(snap.canvasJSON);
-        const newObjects = allObjects.slice(prevObjectCount);
-
-        if (newObjects.length === 0) {
-          await sleep(PAUSE_BETWEEN_PLAYERS);
-          prevObjectCount = allObjects.length;
-          continue;
-        }
-
-        const strokeDelay = Math.min(
-          MAX_STROKE_DELAY,
-          Math.max(MIN_STROKE_DELAY, TARGET_PLAYER_MS / newObjects.length),
-        );
-
-        for (const objData of newObjects) {
-          if (cancelRef.current) break;
-
-          const enlivened = await util.enlivenObjects([objData]);
-          const fabricObj = enlivened[0] as FabricObject | undefined;
-          if (fabricObj) {
-            canvas.add(fabricObj);
-            canvas.renderAll();
-          }
-          await sleep(strokeDelay);
-        }
-
-        prevObjectCount = allObjects.length;
-
-        if (sIdx < snapshots.length - 1 && !cancelRef.current) {
-          await sleep(PAUSE_BETWEEN_PLAYERS);
-        }
-      }
-
-      try {
-        collectedImages.current.push(
-          canvas.toDataURL({ format: "png", multiplier: 2 }),
-        );
-      } catch {
-        collectedImages.current.push("");
-      }
-    },
-    [allSnapshots, initCanvas],
-  );
-
-  const generateSkippedImages = useCallback(async () => {
+  const generateFinalImages = useCallback(async () => {
     const imgs: string[] = [];
-    for (const page of pages) {
+    for (const page of pagesRef.current) {
       if (!page.canvasJSON) {
         imgs.push("");
         continue;
@@ -196,46 +126,135 @@ export function RevealGallery({
       c.dispose();
     }
     return imgs;
-  }, [pages]);
+  }, []);
 
-  const runTimelapse = useCallback(async () => {
-    if (!revealDataReady) return;
-    cancelRef.current = false;
-    collectedImages.current = [];
-
-    for (let pIdx = 0; pIdx < pages.length; pIdx++) {
-      if (cancelRef.current) break;
-      setPageIdx(pIdx);
-      await replayPage(pIdx);
-
-      if (pIdx < pages.length - 1 && !cancelRef.current) {
-        await sleep(PAUSE_BETWEEN_PAGES);
-      }
-    }
-
-    if (cancelRef.current) {
-      const imgs = await generateSkippedImages();
-      setFinishedImages(imgs);
-    } else {
-      setFinishedImages([...collectedImages.current]);
-    }
-
-    setActiveContributor(null);
-    setPhase("finished");
-  }, [pages, replayPage, generateSkippedImages, revealDataReady]);
-
+  // ---- Timelapse effect ----
+  // Uses a generation counter so that StrictMode double-mounts (or
+  // dependency-triggered re-runs) cleanly abandon previous async work
+  // instead of corrupting shared state.
   useEffect(() => {
     if (!revealDataReady) return;
+
+    const gen = ++generationRef.current;
+    const isCurrent = () => generationRef.current === gen;
+
+    const snapData = allSnapshotsRef.current;
+    const pageCount = snapData.length;
+
     setPhase("timelapse");
     setPageIdx(0);
     setSnapshotIdx(0);
     setActiveContributor(null);
     setFinishedImages([]);
-    runTimelapse();
+
+    const localSleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        const id = setTimeout(resolve, ms);
+        const check = setInterval(() => {
+          if (!isCurrent()) {
+            clearTimeout(id);
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
+      });
+
+    (async () => {
+      const localImages: string[] = [];
+
+      for (let pIdx = 0; pIdx < pageCount; pIdx++) {
+        if (!isCurrent()) return;
+        setPageIdx(pIdx);
+
+        const canvas = initCanvas();
+        if (!canvas) {
+          localImages.push("");
+          continue;
+        }
+
+        const snapshots = snapData[pIdx] ?? [];
+        let prevObjectCount = 0;
+
+        for (let sIdx = 0; sIdx < snapshots.length; sIdx++) {
+          if (!isCurrent()) return;
+
+          const snap = snapshots[sIdx];
+          setSnapshotIdx(sIdx);
+          setActiveContributor(snap.contributorId);
+
+          const allObjects = getObjectsFromJSON(snap.canvasJSON);
+          const newObjects = allObjects.slice(prevObjectCount);
+
+          if (newObjects.length === 0) {
+            await localSleep(PAUSE_BETWEEN_PLAYERS);
+            prevObjectCount = allObjects.length;
+            continue;
+          }
+
+          const strokeDelay = Math.min(
+            MAX_STROKE_DELAY,
+            Math.max(MIN_STROKE_DELAY, TARGET_PLAYER_MS / newObjects.length),
+          );
+
+          for (const objData of newObjects) {
+            if (!isCurrent()) return;
+
+            const enlivened = await util.enlivenObjects([objData]);
+            const fabricObj = enlivened[0] as FabricObject | undefined;
+            if (fabricObj) {
+              canvas.add(fabricObj);
+              canvas.renderAll();
+            }
+            await localSleep(strokeDelay);
+          }
+
+          prevObjectCount = allObjects.length;
+
+          if (sIdx < snapshots.length - 1 && isCurrent()) {
+            await localSleep(PAUSE_BETWEEN_PLAYERS);
+          }
+        }
+
+        if (!isCurrent()) return;
+
+        try {
+          localImages.push(
+            canvas.toDataURL({ format: "png", multiplier: 2 }),
+          );
+        } catch {
+          localImages.push("");
+        }
+
+        if (pIdx < pageCount - 1 && isCurrent()) {
+          await localSleep(PAUSE_BETWEEN_PAGES);
+        }
+      }
+
+      if (!isCurrent()) return;
+
+      setFinishedImages(localImages);
+      setActiveContributor(null);
+      setPhase("finished");
+    })();
+
     return () => {
-      cancelRef.current = true;
+      generationRef.current++;
     };
-  }, [runTimelapse, revealDataReady]);
+    // We intentionally depend only on revealDataReady (and the stable
+    // initCanvas). Snapshot data is captured via ref at the moment the
+    // effect fires so that late Liveblocks storage updates don't restart
+    // the timelapse mid-replay.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealDataReady, initCanvas]);
+
+  const handleSkip = useCallback(async () => {
+    const gen = ++generationRef.current;
+    const imgs = await generateFinalImages();
+    if (generationRef.current !== gen) return;
+    setFinishedImages(imgs);
+    setActiveContributor(null);
+    setPhase("finished");
+  }, [generateFinalImages]);
 
   const handleDownloadPdf = () => {
     const urls = finishedImages.filter(Boolean);
@@ -331,9 +350,7 @@ export function RevealGallery({
         </div>
 
         <button
-          onClick={() => {
-            cancelRef.current = true;
-          }}
+          onClick={handleSkip}
           className="text-sm text-zinc-500 transition hover:text-zinc-300"
         >
           Skip to results

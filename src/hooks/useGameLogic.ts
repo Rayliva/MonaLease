@@ -4,8 +4,10 @@ import { useMutation, useOthers, useStorage } from "../liveblocks/room";
 import { rotatePageOwners } from "../utils/rotation";
 import type { GameState, PageData, Snapshot } from "../types/game";
 
-const ROUND_SECONDS = 60;
 const TRANSITION_MS = 700;
+const DEFAULT_ROUND_SECONDS = 30;
+const MIN_ROUND_SECONDS = 10;
+const MAX_ROUND_SECONDS = 300;
 
 function captureSnapshots(
   pages: ReturnType<ReturnType<typeof useStorage<any>>["get"]>,
@@ -29,6 +31,9 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
   const others = useOthers();
   const gameState = useStorage((root) => root.gameState) as GameState | null;
   const timer = useStorage((root) => root.timer) as number;
+  const roundDurationSec = useStorage((root) => root.roundDurationSec) as
+    | number
+    | null;
   const round = useStorage((root) => root.round) as number;
   const pages = useStorage((root) => root.pages) as readonly PageData[] | null;
 
@@ -63,7 +68,8 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
       captureSnapshots(livePages);
       rotatePageOwners(livePages, allUserIds);
       storage.set("round", storage.get("round") + 1);
-      storage.set("timer", ROUND_SECONDS);
+      const duration = storage.get("roundDurationSec") ?? DEFAULT_ROUND_SECONDS;
+      storage.set("timer", duration);
       storage.set("gameState", "DRAWING");
     },
     [allUserIds],
@@ -90,8 +96,9 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
           }),
         );
       });
+      const duration = storage.get("roundDurationSec") ?? DEFAULT_ROUND_SECONDS;
       storage.set("round", 1);
-      storage.set("timer", ROUND_SECONDS);
+      storage.set("timer", duration);
       storage.set("gameState", "DRAWING");
     },
     [allUserIds],
@@ -134,9 +141,21 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
   }, [pages, selfUserId]);
 
   const resetToLobby = useMutation(({ storage }) => {
+    const duration = storage.get("roundDurationSec") ?? DEFAULT_ROUND_SECONDS;
     storage.set("gameState", "LOBBY");
-    storage.set("timer", ROUND_SECONDS);
+    storage.set("timer", duration);
     storage.set("round", 0);
+  }, []);
+
+  const setRoundDuration = useMutation(({ storage }, seconds: number) => {
+    const clamped = Math.max(
+      MIN_ROUND_SECONDS,
+      Math.min(MAX_ROUND_SECONDS, Math.floor(seconds || DEFAULT_ROUND_SECONDS)),
+    );
+    storage.set("roundDurationSec", clamped);
+    if (storage.get("gameState") === "LOBBY") {
+      storage.set("timer", clamped);
+    }
   }, []);
 
   const userNames = useMemo(() => {
@@ -154,6 +173,7 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
     loading,
     gameState,
     timer,
+    roundDurationSec: roundDurationSec ?? DEFAULT_ROUND_SECONDS,
     round,
     pages: pages ?? [],
     isHost,
@@ -162,6 +182,7 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
     myPage,
     userNames,
     startGame,
+    setRoundDuration,
     backToLobby: resetToLobby,
   };
 }

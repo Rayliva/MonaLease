@@ -27,6 +27,7 @@ export type Presence = {
 export type Storage = {
   gameState: GameState;
   timer: number;
+  roundDurationSec: number;
   round: number;
   pages: LiveList<LiveObject<PageData>>;
 };

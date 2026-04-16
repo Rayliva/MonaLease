@@ -4,10 +4,19 @@ import { useOthers, useSelf } from "../../liveblocks/room";
 
 interface Props {
   isHost: boolean;
+  hostId: string;
+  roundDurationSec: number;
+  onRoundDurationChange: (seconds: number) => void;
   onStart: () => void;
 }
 
-export function LobbyView({ isHost, onStart }: Props) {
+export function LobbyView({
+  isHost,
+  hostId,
+  roundDurationSec,
+  onRoundDurationChange,
+  onStart,
+}: Props) {
   const { roomId } = useParams<{ roomId: string }>();
   const self = useSelf();
   const others = useOthers();
@@ -21,6 +30,8 @@ export function LobbyView({ isHost, onStart }: Props) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const isSelfHost = self?.presence.userId === hostId;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-zinc-950 px-4">
@@ -53,7 +64,14 @@ export function LobbyView({ isHost, onStart }: Props) {
             <li className="flex items-center gap-2 text-sm text-zinc-300">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
               {self.presence.userName || "You"}
-              <span className="ml-auto text-xs text-emerald-400">you</span>
+              <div className="ml-auto flex items-center gap-2">
+                {isSelfHost && (
+                  <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                    host
+                  </span>
+                )}
+                <span className="text-xs text-emerald-400">you</span>
+              </div>
             </li>
           )}
           {others.map((user) => (
@@ -63,18 +81,43 @@ export function LobbyView({ isHost, onStart }: Props) {
             >
               <span className="h-2 w-2 rounded-full bg-blue-500" />
               {user.presence.userName || "Anonymous"}
+              {user.presence.userId === hostId && (
+                <span className="ml-auto rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                  host
+                </span>
+              )}
             </li>
           ))}
         </ul>
 
         {isHost ? (
-          <button
-            onClick={onStart}
-            disabled={playerCount < 2}
-            className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {playerCount < 2 ? "Waiting for players..." : "Start Game"}
-          </button>
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-zinc-300">
+              Time per round
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="number"
+                  min={10}
+                  max={300}
+                  step={5}
+                  value={roundDurationSec}
+                  onChange={(e) =>
+                    onRoundDurationChange(Number(e.target.value) || 30)
+                  }
+                  className="w-24 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-100 outline-none focus:border-emerald-500"
+                />
+                <span className="text-xs text-zinc-500">seconds</span>
+              </div>
+            </label>
+
+            <button
+              onClick={onStart}
+              disabled={playerCount < 2}
+              className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {playerCount < 2 ? "Waiting for players..." : "Start Game"}
+            </button>
+          </div>
         ) : (
           <p className="text-center text-sm text-zinc-500">
             Waiting for the host to start the game...
