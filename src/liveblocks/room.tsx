@@ -1,6 +1,7 @@
 import { createRoomContext } from "@liveblocks/react";
+import type { BaseUserMeta } from "@liveblocks/client";
 import { liveblocksClient } from "./client";
-import type { Presence, Storage } from "../types/game";
+import type { Presence, RoomEvent, Storage } from "../types/game";
 
 export const {
   RoomProvider,
@@ -11,4 +12,6 @@ export const {
   useUpdateMyPresence,
   useBroadcastEvent,
   useEventListener,
-} = createRoomContext<Presence, Storage>(liveblocksClient);
+} = createRoomContext<Presence, Storage, BaseUserMeta, RoomEvent>(
+  liveblocksClient,
+);

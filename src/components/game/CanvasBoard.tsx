@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import { Canvas, PencilBrush } from "fabric";
-import { useMutation, useUpdateMyPresence } from "../../liveblocks/room";
+import {
+  useBroadcastEvent,
+  useMutation,
+  useUpdateMyPresence,
+} from "../../liveblocks/room";
 import { useUiStore } from "../../store/uiStore";
 import type { PageData } from "../../types/game";
 
@@ -20,6 +24,7 @@ export function CanvasBoard({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const updatePresence = useUpdateMyPresence();
+  const broadcast = useBroadcastEvent();
   const brushColor = useUiStore((s) => s.brushColor);
   const brushWidth = useUiStore((s) => s.brushWidth);
 
@@ -27,9 +32,18 @@ export function CanvasBoard({
   canDrawRef.current = canDraw;
   const presenceRef = useRef(updatePresence);
   presenceRef.current = updatePresence;
+  const broadcastRef = useRef(broadcast);
+  broadcastRef.current = broadcast;
   const drawingPointsRef = useRef<Array<{ x: number; y: number }>>([]);
+  const activeStrokeIdRef = useRef<string | null>(null);
+  const isPointerDownRef = useRef(false);
   const lastPointsSyncRef = useRef(0);
   const syncPendingRef = useRef(false);
+  const syncNeedsFlushRef = useRef(false);
+  const brushColorRef = useRef(brushColor);
+  brushColorRef.current = brushColor;
+  const brushWidthRef = useRef(brushWidth);
+  brushWidthRef.current = brushWidth;
 
   const writeCanvasJSON = useMutation(
     ({ storage }, json: string) => {
@@ -74,8 +88,20 @@ export function CanvasBoard({
         .catch(() => {});
     }
 
+    const flushSyncImmediate = () => {
+      try {
+        const json = JSON.stringify(canvas.toJSON());
+        writeRef.current(json);
+      } catch {
+        /* canvas may have been disposed */
+      }
+    };
+
     const syncNow = () => {
-      if (syncPendingRef.current) return;
+      if (syncPendingRef.current) {
+        syncNeedsFlushRef.current = true;
+        return;
+      }
       syncPendingRef.current = true;
       setTimeout(() => {
         try {
@@ -85,12 +111,29 @@ export function CanvasBoard({
           /* canvas may have been disposed */
         }
         syncPendingRef.current = false;
+        if (syncNeedsFlushRef.current) {
+          syncNeedsFlushRef.current = false;
+          syncNow();
+        }
       }, 50);
     };
 
-    canvas.on("path:created", () => {
+    const endActiveStroke = () => {
+      const strokeId = activeStrokeIdRef.current;
+      isPointerDownRef.current = false;
       drawingPointsRef.current = [];
-      presenceRef.current({ drawingPoints: null, isDrawing: false });
+      activeStrokeIdRef.current = null;
+      presenceRef.current({ isDrawing: false });
+      if (strokeId) {
+        broadcastRef.current({ type: "stroke-end", strokeId });
+      }
+    };
+
+    canvas.on("path:created", () => {
+      endActiveStroke();
+      // Flush immediately so round snapshots (host) never read stale
+      // canvasJSON before this stroke is committed.
+      flushSyncImmediate();
       syncNow();
     });
 
@@ -99,44 +142,87 @@ export function CanvasBoard({
 
     canvas.on("mouse:move", (e) => {
       const pointer = canvas.getScenePoint(e.e);
-      const pe = e.e as PointerEvent;
-      const activelyDrawing = canvas.isDrawingMode && pe.buttons > 0;
+      const strokeId = activeStrokeIdRef.current;
 
-      if (activelyDrawing) {
+      if (
+        isPointerDownRef.current &&
+        canvas.isDrawingMode &&
+        strokeId !== null
+      ) {
         drawingPointsRef.current.push({ x: pointer.x, y: pointer.y });
         const now = Date.now();
-        if (now - lastPointsSyncRef.current > 60) {
+        if (now - lastPointsSyncRef.current > 30) {
           lastPointsSyncRef.current = now;
-          presenceRef.current({
-            cursor: { x: pointer.x, y: pointer.y },
-            activePageId: page.id,
-            isDrawing: true,
-            drawingPoints: [...drawingPointsRef.current],
+          broadcastRef.current({
+            type: "stroke-update",
+            strokeId,
+            pageId: page.id,
+            color: brushColorRef.current,
+            width: brushWidthRef.current,
+            points: [...drawingPointsRef.current],
           });
-          return;
         }
       }
 
       presenceRef.current({
         cursor: { x: pointer.x, y: pointer.y },
         activePageId: page.id,
-        isDrawing: activelyDrawing,
+        isDrawing: isPointerDownRef.current && canvas.isDrawingMode,
       });
     });
 
-    canvas.on("mouse:down", () => {
-      if (canvas.isDrawingMode) {
-        drawingPointsRef.current = [];
+    canvas.on("mouse:down", (e) => {
+      if (!canvas.isDrawingMode) return;
+      const pointer = canvas.getScenePoint(e.e);
+      isPointerDownRef.current = true;
+      drawingPointsRef.current = [{ x: pointer.x, y: pointer.y }];
+      const strokeId =
+        (globalThis.crypto as Crypto | undefined)?.randomUUID?.() ??
+        `s-${Date.now()}-${Math.random()}`;
+      activeStrokeIdRef.current = strokeId;
+      lastPointsSyncRef.current = 0;
+      presenceRef.current({
+        cursor: { x: pointer.x, y: pointer.y },
+        activePageId: page.id,
+        isDrawing: true,
+      });
+      broadcastRef.current({
+        type: "stroke-update",
+        strokeId,
+        pageId: page.id,
+        color: brushColorRef.current,
+        width: brushWidthRef.current,
+        points: [...drawingPointsRef.current],
+      });
+    });
+
+    canvas.on("mouse:up", () => {
+      // path:created already fires on a successful stroke, but for a click
+      // without movement (no Fabric path produced) we still need to clean up.
+      if (activeStrokeIdRef.current !== null) {
+        endActiveStroke();
       }
+      isPointerDownRef.current = false;
     });
 
     canvas.on("mouse:out", () => {
       presenceRef.current({ cursor: null });
     });
 
+    const handleWindowPointerUp = () => {
+      if (activeStrokeIdRef.current !== null) {
+        endActiveStroke();
+      }
+      isPointerDownRef.current = false;
+    };
+    window.addEventListener("pointerup", handleWindowPointerUp);
+    window.addEventListener("pointercancel", handleWindowPointerUp);
+
     fabricRef.current = canvas;
 
     return () => {
+      window.removeEventListener("pointerup", handleWindowPointerUp);
+      window.removeEventListener("pointercancel", handleWindowPointerUp);
       canvas.dispose();
       fabricRef.current = null;
     };

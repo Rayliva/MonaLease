@@ -45,6 +45,24 @@ function getObjectsFromJSON(canvasJSON: string): any[] {
   }
 }
 
+async function canvasJsonToDataUrl(canvasJSON: string): Promise<string> {
+  if (!canvasJSON) return "";
+  const offscreen = document.createElement("canvas");
+  const c = new Canvas(offscreen, {
+    width: CANVAS_W,
+    height: CANVAS_H,
+  });
+  try {
+    await c.loadFromJSON(canvasJSON);
+    c.renderAll();
+    return c.toDataURL({ format: "png", multiplier: 2 });
+  } catch {
+    return "";
+  } finally {
+    c.dispose();
+  }
+}
+
 export function RevealGallery({
   pages,
   userNames,
@@ -217,13 +235,17 @@ export function RevealGallery({
 
         if (!isCurrent()) return;
 
+        let pageThumb = "";
         try {
-          localImages.push(
-            canvas.toDataURL({ format: "png", multiplier: 2 }),
-          );
+          pageThumb = canvas.toDataURL({ format: "png", multiplier: 2 });
         } catch {
-          localImages.push("");
+          pageThumb = "";
         }
+        const pageData = pagesRef.current[pIdx];
+        if (!pageThumb && pageData?.canvasJSON) {
+          pageThumb = await canvasJsonToDataUrl(pageData.canvasJSON);
+        }
+        localImages.push(pageThumb);
 
         if (pIdx < pageCount - 1 && isCurrent()) {
           await localSleep(PAUSE_BETWEEN_PAGES);

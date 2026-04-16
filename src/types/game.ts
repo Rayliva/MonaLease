@@ -21,7 +21,6 @@ export type Presence = {
   isDrawing: boolean;
   userId: string;
   userName: string;
-  drawingPoints: Array<{ x: number; y: number }> | null;
 };
 
 export type Storage = {
@@ -30,4 +29,22 @@ export type Storage = {
   roundDurationSec: number;
   round: number;
   pages: LiveList<LiveObject<PageData>>;
+  /** First client to enter the room claims host; stable for the session. */
+  hostUserId: string | null;
 };
+
+export type LiveStrokeUpdate = {
+  type: "stroke-update";
+  strokeId: string;
+  pageId: string;
+  color: string;
+  width: number;
+  points: Array<{ x: number; y: number }>;
+};
+
+export type LiveStrokeEnd = {
+  type: "stroke-end";
+  strokeId: string;
+};
+
+export type RoomEvent = LiveStrokeUpdate | LiveStrokeEnd;

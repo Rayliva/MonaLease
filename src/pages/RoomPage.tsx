@@ -28,7 +28,6 @@ export function RoomPage() {
         isDrawing: false,
         userId,
         userName,
-        drawingPoints: null,
       }}
       initialStorage={{
         gameState: "LOBBY",
@@ -36,6 +35,7 @@ export function RoomPage() {
         roundDurationSec: DEFAULT_ROUND_SECONDS,
         round: 0,
         pages: new LiveList([]),
+        hostUserId: null,
       }}
     >
       <GameShell />

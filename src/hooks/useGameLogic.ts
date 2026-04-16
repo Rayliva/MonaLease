@@ -36,6 +36,9 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
     | null;
   const round = useStorage((root) => root.round) as number;
   const pages = useStorage((root) => root.pages) as readonly PageData[] | null;
+  const hostUserIdFromStorage = useStorage(
+    (root) => root.hostUserId,
+  ) as string | null | undefined;
 
   const loading = gameState === null;
 
@@ -47,7 +50,23 @@ export function useGameLogic(selfUserId: string, selfUserName: string) {
     return Array.from(new Set(ids)).sort();
   }, [others, selfUserId]);
 
-  const hostId = allUserIds[0] ?? selfUserId;
+  /** Stable host: first client to join claims `hostUserId` in storage. */
+  const claimHost = useMutation(({ storage }, uid: string) => {
+    const current = storage.get("hostUserId");
+    if (current == null || current === "") {
+      storage.set("hostUserId", uid);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    claimHost(selfUserId);
+  }, [loading, selfUserId, claimHost]);
+
+  const hostId =
+    hostUserIdFromStorage != null && hostUserIdFromStorage !== ""
+      ? hostUserIdFromStorage
+      : (allUserIds[0] ?? selfUserId);
   const isHost = selfUserId === hostId;
   const tickingRef = useRef(false);
 
