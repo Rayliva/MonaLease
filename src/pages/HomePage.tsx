@@ -18,11 +18,11 @@ export function HomePage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-zinc-950 px-4">
       <h1 className="bg-gradient-to-r from-emerald-400 to-indigo-400 bg-clip-text text-6xl font-extrabold text-transparent">
-        Carousel Canvas
+        Mona Lease
       </h1>
       <p className="max-w-md text-center text-zinc-400">
-        A collaborative drawing game. Create or join a room, draw on a shared
-        canvas, and watch the pages rotate between players.
+        A collaborative art leasing experience. Create or join a room, lease
+        the artworks as they rotate between players.
       </p>
 
       <div className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border border-zinc-700 bg-zinc-900 p-6">
