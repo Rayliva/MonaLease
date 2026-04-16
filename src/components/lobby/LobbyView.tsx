@@ -36,7 +36,7 @@ export function LobbyView({
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-zinc-950 px-4">
       <h1 className="bg-gradient-to-r from-emerald-400 to-indigo-400 bg-clip-text text-5xl font-extrabold text-transparent">
-        Carousel Canvas
+        Mona Lease
       </h1>
 
       <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-6">
