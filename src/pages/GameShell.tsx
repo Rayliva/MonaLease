@@ -2,7 +2,6 @@ import { useGameLogic } from "../hooks/useGameLogic";
 import { useUiStore } from "../store/uiStore";
 import { LobbyView } from "../components/lobby/LobbyView";
 import { CanvasViewport } from "../components/game/CanvasViewport";
-import { TimerBar } from "../components/game/TimerBar";
 import { RoundBadge } from "../components/game/RoundBadge";
 import { RevealGallery } from "../components/gallery/RevealGallery";
 
@@ -50,11 +49,8 @@ export function GameShell() {
 
   return (
     <div className="flex min-h-screen flex-col gap-4 bg-zinc-950 p-6">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center">
         <RoundBadge round={round} totalRounds={allUserIds.length} />
-        <div className="w-64">
-          <TimerBar seconds={timer} maxSeconds={roundDurationSec} />
-        </div>
       </header>
 
       <main className="mx-auto w-full max-w-4xl flex-1 overflow-y-auto">
@@ -63,6 +59,8 @@ export function GameShell() {
           selfUserId={userId}
           gameState={gameState ?? "DRAWING"}
           userNames={userNames}
+          timerSeconds={timer}
+          roundDurationSec={roundDurationSec}
         />
       </main>
     </div>

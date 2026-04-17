@@ -13,6 +13,8 @@ interface Props {
   selfUserId: string;
   gameState: GameState;
   userNames: Record<string, string>;
+  timerSeconds: number;
+  roundDurationSec: number;
 }
 
 export function CanvasViewport({
@@ -20,6 +22,8 @@ export function CanvasViewport({
   selfUserId,
   gameState,
   userNames,
+  timerSeconds,
+  roundDurationSec,
 }: Props) {
   const isTransitioning = gameState === "TRANSITION";
   const pageRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -70,7 +74,15 @@ export function CanvasViewport({
               )}
             </div>
 
-            {isMyActive && <Toolbar />}
+            {isMyActive && (
+              <Toolbar
+                pageId={page.id}
+                historyEnabled={canDraw}
+                showTimer={gameState === "DRAWING"}
+                timerSeconds={timerSeconds}
+                roundDurationSec={roundDurationSec}
+              />
+            )}
 
             <TransitionLayer isTransitioning={isTransitioning && isMyActive}>
               <div className="relative mt-2">

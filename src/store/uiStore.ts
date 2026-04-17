@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-type DrawingTool = "pencil" | "eraser";
+type DrawingTool = "pencil" | "fill";
 
 interface UiState {
   userId: string;
